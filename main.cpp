@@ -37,15 +37,17 @@ struct event
 //*****              Global Variables            ***********
 //**********************************************************
 const int g_MaxServers = 20;
+const int g_QueueSize = 10;
+
 int g_CurrentServers = -1;
 
 server* g_ServerLinkedList = NULL;
 server* g_BusyServers[g_MaxServers];
 
-event g_nextEvent;
+event g_nextEvent;	//probably delete;
 
 customer* g_Queue[10];
-int g_CurrentQueue = 0;
+int g_CurrentQueue = 0;	//probably delete;
 
 double g_currentTime = 0.0;
 
@@ -82,6 +84,10 @@ void insertServer(server* aServer)
 				if(tmp->BeforePtr) tmp->BeforePtr->Ptr = aServer;			//Make previous ptr look at me
 				aServer->BeforePtr = tmp->BeforePtr;						//Update previous Ptr of new server
 				tmp->BeforePtr = aServer;									//Update previous ptr of old server
+				if (prevtmp == NULL)
+				{
+					g_ServerLinkedList = aServer;
+				}
 				return;
 			}
 			else
@@ -107,7 +113,8 @@ void insertBusyServer(server* aServer, customer* aCustomer)
 	aServer->Ptr = NULL;
 	aServer->busyTime = g_currentTime + (aServer->efficiency * aCustomer->time);
 	aServer->startTime = g_currentTime;
-	
+	cout << "matching a customer " << g_currentTime << endl;
+
 	for (int i = 0; i < g_MaxServers; i++)
 	{
 		if (!g_BusyServers[i])
@@ -124,6 +131,7 @@ void insertBusyServer(server* aServer, customer* aCustomer)
 
 void pop(server* aServer, customer* aCustomer)
 {
+	g_Queue[0] = NULL;
 	if (g_ServerLinkedList->Ptr)
 	{
 		g_ServerLinkedList = aServer->Ptr;
@@ -163,49 +171,97 @@ int getNextServer()
 
 void checkBusy()
 {
-	server* nextServer = g_BusyServers[getNextServer()];
+	int index = getNextServer();
+	server* nextServer = g_BusyServers[index];
 
 	if (nextServer)
 	{
 		g_currentTime = nextServer->busyTime;
+		cout << "putting a server back in queue " << g_currentTime << endl;
 		nextServer->busyTime = 0;
+		g_BusyServers[index] = NULL;
 		insertServer(nextServer);
 	}
 }
 
 int getNextEvent(customer* aCustomer)
 {
-	double tmp = g_currentTime;
-	server* servertmp = g_BusyServers[getNextServer()];
+	int index = getNextServer();
+	server* servertmp = g_BusyServers[index];
 
-	if (g_ServerLinkedList)
+	if (servertmp)
 	{
-		return 0;	//Server is available
+		if (aCustomer->arrivalTime > servertmp->busyTime)	//we can free up a server
+		{
+			return 1;
+		}
+		else 
+		{
+			return 0;
+		}
 	}
-	else if (!g_ServerLinkedList)
+	else
 	{
-		return 1;	//Customer is in Queue
-	}
-	else if (g_currentTime > servertmp->busyTime)
-	{
-		return 2;	//Customer is Leaving
+		return 0;
 	}
 
 	return 0;		//Customer is next Event
 }
 
+void shiftQueue()
+{
+	if (g_Queue[1] == NULL) return;	//can assume index 0 is null or has data;
+
+	for (int i = 1; i < g_QueueSize; i++)
+	{
+		if (g_Queue[i] = NULL) return;
+
+		g_Queue[i - 1] = g_Queue[i];
+	}
+}
+void addQueue(customer* aCustomer)
+{
+	shiftQueue();
+
+	for (int i = 0; i < g_QueueSize; i++)
+	{
+		if (!g_Queue[i])
+		{
+			g_Queue[i] = aCustomer;
+			break;
+		}
+	}
+}
+int sizeofQueue()
+{
+	int tmp = 0;
+	for (int i = 0; i < g_QueueSize; i++)
+	{
+		if (g_Queue[i])
+		{
+			tmp++;
+		}
+		else
+		{
+			return tmp;
+		}
+	}
+	return tmp;
+}
 void checkQueue(customer* aCustomer)
 {
-	while (getNextEvent(aCustomer) != 1)
-	{
+	addQueue(aCustomer);
+	int tmp = sizeofQueue();
+	cout << "queue size = " << tmp << endl;
+	while (getNextEvent(g_Queue[0]) == 1)
+	{	
 		checkBusy();
 	}
 
 	if (g_ServerLinkedList != NULL)//Available Server
 	{
-		pop(g_ServerLinkedList, aCustomer);
+		pop(g_ServerLinkedList, g_Queue[0]);
 	}
-
 }
 
 
