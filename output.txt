@@ -1,0 +1,15 @@
+C:\Users\Christopher\Documents\Visual Studio 2017\Projects\MajorAssignment2-Algos-C\Debug>MajorAssignment2-Algos-C.exe
+Enter File name:
+test.txt
+Number of customers served: 494
+Time last customer completed service: 256.6603
+Greatest length reached by the queue: 4
+Average length of the queue: 0.05445637
+Average customer waiting time: 0.02821103
+
+Server   Priority   CustsServed   IdleTime
+  0       1.4051       50       156.9601
+  1       0.5037      217       80.70892
+  2       1.0715       84       125.0179
+  3       1.0622      115       80.26597
+  4       1.4822       28       197.7001

@@ -1,374 +1,233 @@
-#include <iostream>									//i/o stream
-#include <string>									//string lib
-#include <fstream>									//i/o stream
-#include <cctype>									//char handling
-#include <iomanip>									//text formatting
-#include <sstream>
+#include <iostream>
+#include <iomanip>
+#include <string>
+#include <fstream>
+#include <cstring>
+#include <stdio.h>
 using namespace std;
 
-//**********************************************************
-//*****           Classes and Structs            ***********
-//**********************************************************
-struct customer 
+const int g_totalServers = 20;
+const int g_totalEvents = 1000;
+const int g_totalCustomers = 1000;
+
+struct Server
+{
+	double priority;
+	int custServerId;
+	double finish_time;
+	double totalservicetime;
+	bool idle;
+
+	Server()
+	{
+		idle = true;
+		priority = 0;
+		custServerId = 0;
+		finish_time = 0;
+		totalservicetime = 0;
+	}
+};
+
+struct Event
+{
+	int eventType;
+	double eventTime;
+	double serviceTime;
+};
+
+double g_Time = 0;
+Server g_Servers[g_totalServers];
+int g_ServerNum = 0;
+Event g_Events[g_totalEvents];
+int g_EventCount = 0;
+
+struct node
 {
 	double arrivalTime;
-	double time;
+	double serviceTime;
 };
 
-struct server
-{
-	double efficiency;
-	int customersServed;
-	double idleTime;
-	double busyTime;
-	double startTime;
+node g_Cust[g_totalCustomers];
+int g_frontCust = 0;
+int g_rearCust = 0;
+int g_Counter = 0;
+int g_TCounter = 0;
+double g_TotalTimeQue = 0;
+int g_MaxQueLen = 0;
 
-	server* Ptr;
-	server* BeforePtr;
-};
-
-struct event 
-{
-	int type;
-	double time;
-};
-
-//**********************************************************
-//*****              Global Variables            ***********
-//**********************************************************
-const int g_MaxServers = 20;
-const int g_QueueSize = 10;
-
-int g_CurrentServers = -1;
-
-server* g_ServerLinkedList = NULL;
-server* g_BusyServers[g_MaxServers];
-
-event g_nextEvent;	//probably delete;
-
-customer* g_Queue[10];
-int g_CurrentQueue = 0;	//probably delete;
-
-double g_currentTime = 0.0;
-
-//**********************************************************
-//*****                Misc  Functions           ***********
-//**********************************************************
-
-void insertServer(server* aServer)
-{
-	if (g_ServerLinkedList)
-	{
-		if (g_ServerLinkedList->Ptr == NULL)
-		{
-			if (g_ServerLinkedList->efficiency > aServer->efficiency)
-			{
-				aServer->Ptr = g_ServerLinkedList;
-				g_ServerLinkedList->BeforePtr = aServer;
-				g_ServerLinkedList = aServer;
-			}
-			else
-			{
-				g_ServerLinkedList->Ptr = aServer;
-				aServer->BeforePtr = g_ServerLinkedList;
-			}
-			return;
-		}
-		server* tmp = g_ServerLinkedList;
-		server* prevtmp = NULL;
-		while (tmp)
-		{
-			if (tmp->efficiency > aServer->efficiency)
-			{
-				aServer->Ptr = tmp;											//shift old server back
-				if(tmp->BeforePtr) tmp->BeforePtr->Ptr = aServer;			//Make previous ptr look at me
-				aServer->BeforePtr = tmp->BeforePtr;						//Update previous Ptr of new server
-				tmp->BeforePtr = aServer;									//Update previous ptr of old server
-				if (prevtmp == NULL)
-				{
-					g_ServerLinkedList = aServer;
-				}
-				return;
-			}
-			else
-			{
-				prevtmp = tmp;
-				tmp = tmp->Ptr;
-			}
-		}
-		prevtmp->Ptr = aServer;
-		aServer->BeforePtr = prevtmp;
-	}
-	else
-	{
-		g_ServerLinkedList = aServer;
-	}
-}
-
-void insertBusyServer(server* aServer, customer* aCustomer)
-{
-	g_currentTime = aCustomer->arrivalTime;
-	aServer->customersServed++;
-	aServer->BeforePtr = NULL;
-	aServer->Ptr = NULL;
-	aServer->busyTime = g_currentTime + (aServer->efficiency * aCustomer->time);
-	aServer->startTime = g_currentTime;
-	cout << "matching a customer " << g_currentTime << endl;
-
-	for (int i = 0; i < g_MaxServers; i++)
-	{
-		if (!g_BusyServers[i])
-		{
-			g_BusyServers[i] = aServer;
-			break;
-		}
-	}
-}
-
-//**********************************************************
-//*****                Queue Functions           ***********
-//**********************************************************
-
-void pop(server* aServer, customer* aCustomer)
-{
-	g_Queue[0] = NULL;
-	if (g_ServerLinkedList->Ptr)
-	{
-		g_ServerLinkedList = aServer->Ptr;
-		g_ServerLinkedList->BeforePtr = NULL;
-	}
-	else
-	{
-		g_ServerLinkedList = NULL;
-	}
-
-	insertBusyServer(aServer,aCustomer);
-}
-
-int getNextServer()
-{
-	int tmp = -1;
-	for (int i = 0; i < g_MaxServers; i++)
-	{
-		if (g_BusyServers[i])
-		{
-			if (tmp != -1)
-			{
-				if (g_BusyServers[i]->busyTime < g_BusyServers[tmp]->busyTime)
-				{
-					tmp = i;
-				}
-			}
-			else
-			{
-				tmp = i;
-			}
-		}
-	}
-
-	return tmp;
-}
-
-void checkBusy()
-{
-	int index = getNextServer();
-	server* nextServer = g_BusyServers[index];
-
-	if (nextServer)
-	{
-		g_currentTime = nextServer->busyTime;
-		cout << "putting a server back in queue " << g_currentTime << endl;
-		nextServer->busyTime = 0;
-		g_BusyServers[index] = NULL;
-		insertServer(nextServer);
-	}
-}
-
-int getNextEvent(customer* aCustomer)
-{
-	int index = getNextServer();
-	server* servertmp = g_BusyServers[index];
-
-	if (servertmp)
-	{
-		if (aCustomer->arrivalTime > servertmp->busyTime)	//we can free up a server
-		{
-			return 1;
-		}
-		else 
-		{
-			return 0;
-		}
-	}
-	else
-	{
-		return 0;
-	}
-
-	return 0;		//Customer is next Event
-}
-
-void shiftQueue()
-{
-	if (g_Queue[1] == NULL) return;	//can assume index 0 is null or has data;
-
-	for (int i = 1; i < g_QueueSize; i++)
-	{
-		if (g_Queue[i] = NULL) return;
-
-		g_Queue[i - 1] = g_Queue[i];
-	}
-}
-void addQueue(customer* aCustomer)
-{
-	shiftQueue();
-
-	for (int i = 0; i < g_QueueSize; i++)
-	{
-		if (!g_Queue[i])
-		{
-			g_Queue[i] = aCustomer;
-			break;
-		}
-	}
-}
-int sizeofQueue()
-{
-	int tmp = 0;
-	for (int i = 0; i < g_QueueSize; i++)
-	{
-		if (g_Queue[i])
-		{
-			tmp++;
-		}
-		else
-		{
-			return tmp;
-		}
-	}
-	return tmp;
-}
-void checkQueue(customer* aCustomer)
-{
-	addQueue(aCustomer);
-	int tmp = sizeofQueue();
-	cout << "queue size = " << tmp << endl;
-	while (getNextEvent(g_Queue[0]) == 1)
-	{	
-		checkBusy();
-	}
-
-	if (g_ServerLinkedList != NULL)//Available Server
-	{
-		pop(g_ServerLinkedList, g_Queue[0]);
-	}
-}
-
-
-//**********************************************************
-//*****                Reading File              ***********
-//**********************************************************
-void ReadFile(string aFileName)
-{
-	ifstream fin(aFileName.c_str());
-
-	if (!fin.good())
-	{
-		cerr << "Could not open data file!\n";
-		return;
-	}
-
-	int index = 0;
-	int processedServers = 0;
-	string a;
-	while (getline(fin,a)) 
-	{
-		if (g_CurrentServers == -1)	//Assign amount of Servers
-		{
-			g_CurrentServers = stoi(a);
-			continue;
-		}
-		else if (processedServers != g_CurrentServers)	//Assign Servers
-		{
-			insertServer(new server{ stod(a), processedServers, 0, 0, 0, NULL, NULL});
-			processedServers++;
-		}
-		else //Read in Customers
-		{
-			auto iss = istringstream(a);
-
-			double a, b;
-			iss >> a >> b;
-			checkQueue(new customer{ a, b });
-		}
-	}
-
-	server* tmp = g_ServerLinkedList;
-	while (tmp)
-	{
-		cout << tmp->efficiency << endl;
-		tmp = tmp->Ptr;
-	}
-	for (int i = 0; i < g_CurrentQueue; i++)
-	{
-		if (g_Queue[i])
-		{
-			//cout << g_Queue[i]->arrivalTime << " " << g_Queue[i]->time << endl;
-
-		}
-	}
-
-	fin.close();
-
-	cout << "Finished loading file" << endl;
-}
-
-void SelectFile()
-{
-	cout << "\nEnter the name of the file (ie words.txt)" << endl;
-	string input;
-	cin >> input;
-
-	ReadFile(input);
-}
-
-//**********************************************************
-//*****            Interface and Menu            ***********
-//**********************************************************
-char Menu()
-{
-	char Cmd;
-	cout << endl << "*********************************" << endl;
-	cout << "*     Assignment 2              *" << endl;
-	cout << "*     (r)ead file               *" << endl;
-	cout << "*     (q)uit                    *" << endl;
-	cout << "*********************************" << endl;
-	cout << "Command: ";
-	cin >> Cmd;
-	cin.ignore();  // eat up '\n'
-	Cmd = tolower(Cmd);
-	return Cmd;
-}
+//-------------------------------
+int findServer();
+bool QueEmpty();
+bool EventQueEmpty();
+void removeEvent(int& eventType, double& eventTime, double& serviceTime);
+void enqueue(double arrivalTime, double serviceTime);
+void dequeue(double& arrivalTime, double& serviceTime);
+void insertEvent(int eventType, double eventTime, double serviceTime);
 
 int main()
 {
-	bool Quit = false;
+	ifstream input;
+	double startTime;
+	char filename[20];
+	cout << "Enter File name:" << endl;
+	gets_s(filename);
 
-	do
+	input.open(filename);
+	if (!input)
 	{
-		char Cmd = Menu();
-		switch (Cmd)
-		{
-		case 'r':
-			SelectFile();
-			break;
-		case 'q':
-			Quit = true;
-			break;
-		default:
-			cerr << "Invalid command!\n";
-		}
-	} while (!Quit);
+		cout << "Error : Failed to open the file!";
+		return 0;
+	}
 
+	input >> g_ServerNum;
+	for (int i = 0; i < g_ServerNum; i++)
+	{
+		input >> g_Servers[i].priority;
+	}
+
+	double eventTime, arrivalTime, serviceTime;
+	input >> arrivalTime >> serviceTime;
+
+	insertEvent(-1, arrivalTime, serviceTime);
+
+	double prevTime = -1, initTime = arrivalTime;
+	double AvgQueLen = 0, AvgTimeQue = 0;
+
+	while (!EventQueEmpty())
+	{
+		int eventType;
+		removeEvent(eventType, eventTime, serviceTime);
+		g_Time = eventTime;
+
+		if (prevTime >= 0)// Do Stats
+		{
+			double event_duration = g_Time - prevTime;
+			AvgQueLen += g_Counter * event_duration;
+		}
+		prevTime = g_Time;
+		if (eventType == -1) // Customer Arriving
+		{
+			enqueue(g_Time, serviceTime);
+			if (input >> arrivalTime >> serviceTime)
+			{
+				insertEvent(-1, arrivalTime, serviceTime);
+			}
+		}
+		else // Customer gone
+		{
+			g_Servers[eventType].idle = true;
+			g_Servers[eventType].cust_served++;
+		}
+
+		if (!QueEmpty()) // Customer is waiting
+		{
+			int serv = findServer();
+			if (serv != -1)
+			{
+				double serviceTime;
+				dequeue(arrivalTime, serviceTime);
+				g_TotalTimeQue += g_Time - arrivalTime;
+				serviceTime = serviceTime * g_Servers[serv].priority;
+				g_Servers[serv].totalservicetime = g_Servers[serv].totalservicetime + serviceTime;
+				g_Servers[serv].idle = false;
+				double finish_time = g_Time + serviceTime;
+				insertEvent(serv, finish_time, 0);
+				g_TCounter++;
+			}
+		}
+	}
+
+	input.close();
+
+	startTime = g_Time - initTime;
+	AvgQueLen /= startTime;
+
+	cout << setprecision(7);
+	cout << "Number of customers served: " << g_TCounter << endl;
+	cout << "Time last customer completed service: " << g_Time << endl;
+	cout << "Greatest length reached by the queue: " << g_MaxQueLen << endl;
+	cout << "Average length of the queue: " << AvgQueLen << endl;
+	cout << "Average customer waiting time: " << g_TotalTimeQue / g_TCounter << endl << endl;
+	cout << "Server   Priority   CustsServed   IdleTime" << endl;
+
+	for (int i = 0; i<g_ServerNum; i++)
+	{
+		cout << setw(3) << i
+			<< setw(13) << g_Servers[i].priority
+			<< setw(9) << g_Servers[i].cust_served
+			<< setw(15) << startTime - g_Servers[i].totalservicetime
+			<< endl;
+	}
 	return 0;
+}
+
+void insertEvent(int eventType, double eventTime, double serviceTime)
+{
+	int i = g_EventCount;
+	while (i>0 && eventTime < g_Events[i - 1].eventTime)
+	{
+		g_Events[i] = g_Events[i - 1];
+		i--;
+	}
+	g_Events[i].eventType = eventType;
+	g_Events[i].eventTime = eventTime;
+	g_Events[i].serviceTime = serviceTime;
+	g_EventCount++;
+}
+
+void removeEvent(int& eventType, double& eventTime, double& serviceTime)
+{
+	eventType = g_Events[0].eventType;
+	eventTime = g_Events[0].eventTime;
+	serviceTime = g_Events[0].serviceTime;
+	g_EventCount--;
+	for (int i = 0; i<g_EventCount; i++)
+	{
+		g_Events[i] = g_Events[i + 1];
+	}
+}
+
+bool EventQueEmpty()
+{
+	return g_EventCount == 0;
+}
+
+bool QueEmpty()
+{
+	return g_Counter == 0;
+}
+
+int findServer()
+{
+	int serv = -1;
+	double maxpriority = 9999999;
+	for (int i = 0; i<g_ServerNum; i++)
+	{
+		if (g_Servers[i].idle && g_Servers[i].priority < maxpriority) {
+			maxpriority = g_Servers[i].priority;
+			serv = i;
+		}
+	}
+	return serv;
+}
+
+void enqueue(double arrivalTime, double serviceTime)
+{
+	g_Cust[g_rearCust].arrivalTime = arrivalTime;
+	g_Cust[g_rearCust].serviceTime = serviceTime;
+
+	g_rearCust++;
+	if (g_rearCust == g_totalCustomers) g_rearCust = 0;
+	g_Counter++;
+	if (g_Counter>g_MaxQueLen) g_MaxQueLen = g_Counter;
+}
+
+void dequeue(double &arrivalTime, double &serviceTime)
+{
+	serviceTime = g_Cust[g_frontCust].serviceTime;
+	arrivalTime = g_Cust[g_frontCust].arrivalTime;
+
+	g_frontCust++;
+	if (g_frontCust == g_totalCustomers) g_frontCust = 0;
+	g_Counter--;
 }
